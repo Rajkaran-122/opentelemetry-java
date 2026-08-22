@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -858,6 +859,29 @@ class PeriodicMetricReaderTest {
     } finally {
       reader.shutdown();
     }
+  }
+
+  @Test
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  void applyTimeout_skipsSchedulingForSynchronouslyCompletedExport() {
+    // A timeout is only useful for exports that have not already finished. When the exporter
+    // completes synchronously, no timeout task should be scheduled since it would be immediately
+    // cancelled.
+    ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
+    when(scheduler.scheduleAtFixedRate(any(), anyLong(), anyLong(), any()))
+        .thenReturn(mock(ScheduledFuture.class));
+    when(scheduler.schedule(any(Runnable.class), anyLong(), any(TimeUnit.class)))
+        .thenReturn(mock(ScheduledFuture.class));
+    when(metricExporter.export(any())).thenReturn(CompletableResultCode.ofSuccess());
+    when(metricExporter.flush()).thenReturn(CompletableResultCode.ofSuccess());
+
+    PeriodicMetricReader reader =
+        PeriodicMetricReader.builder(metricExporter).setExecutor(scheduler).build();
+    reader.register(collectionRegistration);
+
+    assertThat(reader.forceFlush().join(5, TimeUnit.SECONDS).isSuccess()).isTrue();
+
+    verify(scheduler, never()).schedule(any(Runnable.class), anyLong(), any(TimeUnit.class));
   }
 
   // Helper test classes for timeout testing
