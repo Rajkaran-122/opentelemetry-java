@@ -263,6 +263,13 @@ public final class PeriodicMetricReader implements MetricReader {
       if (exporterTimeoutNanos == Long.MAX_VALUE) {
         return result;
       }
+      if (result.isDone()) {
+        // Already complete (e.g. a synchronous exporter) - scheduling a timeout task would be
+        // wasted work, since it would immediately be cancelled.
+        return result.isSuccess()
+            ? CompletableResultCode.ofSuccess()
+            : CompletableResultCode.ofFailure();
+      }
 
       try {
         CompletableResultCode timeoutResult = new CompletableResultCode();
