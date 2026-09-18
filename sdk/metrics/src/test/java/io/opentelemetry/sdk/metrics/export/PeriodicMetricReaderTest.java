@@ -830,6 +830,55 @@ class PeriodicMetricReaderTest {
   }
 
   @Test
+  void exporterTimeout_waitsForCompletionBeforeNextBatch() throws Exception {
+    MetricExporter mockExporter = mock(MetricExporter.class);
+    when(mockExporter.getAggregationTemporality(any()))
+        .thenReturn(AggregationTemporality.CUMULATIVE);
+    when(mockExporter.flush()).thenReturn(CompletableResultCode.ofSuccess());
+    when(mockExporter.shutdown()).thenReturn(CompletableResultCode.ofSuccess());
+
+    CompletableResultCode batch1Result = new CompletableResultCode();
+    CompletableResultCode batch2Result = new CompletableResultCode();
+
+    when(mockExporter.export(any())).thenReturn(batch1Result).thenReturn(batch2Result);
+
+    PeriodicMetricReader reader =
+        PeriodicMetricReader.builder(mockExporter)
+            .setInterval(Duration.ofSeconds(Integer.MAX_VALUE))
+            .setMaxExportBatchSize(2) // 6 points / 2 = 3 batches
+            .setExporterTimeout(Duration.ofMillis(50)) // Short timeout
+            .build();
+
+    when(collectionRegistration.collectAllMetrics())
+        .thenReturn(Collections.singletonList(METRIC_DATA));
+    reader.register(collectionRegistration);
+
+    try {
+      CompletableResultCode flush = reader.forceFlush();
+
+      // Verify only batch 1 was called (timeout window expires while batch1Result is incomplete)
+      verify(mockExporter, timeout(2000).times(1)).export(any());
+
+      // Complete batch 1 so the worker can proceed
+      batch1Result.succeed();
+
+      // Verify batch 2 was called (worker waited for batch 1 completion)
+      verify(mockExporter, timeout(2000).times(2)).export(any());
+
+      // Complete batch 2
+      batch2Result.succeed();
+
+      // Wait for flush to complete
+      flush.join(5, TimeUnit.SECONDS);
+    } finally {
+      // Ensure cleanup even if test fails
+      batch1Result.succeed();
+      batch2Result.succeed();
+      reader.shutdown();
+    }
+  }
+
+  @Test
   void stringRepresentation() {
     when(metricExporter.toString()).thenReturn("MockMetricExporter{}");
     assertThat(
