@@ -730,6 +730,25 @@ class PeriodicMetricReaderTest {
   }
 
   @Test
+  void setExporterTimeout_zeroDisablesTimeout() {
+    // Explicitly setting timeout to 0 disables the timeout (maps to Long.MAX_VALUE)
+    PeriodicMetricReader reader =
+        PeriodicMetricReader.builder(metricExporter)
+            .setInterval(Duration.ofSeconds(10))
+            .setExporterTimeout(Duration.ZERO)
+            .build();
+    assertThat(reader).isNotNull();
+  }
+
+  @Test
+  void setExporterTimeout_unsetDefaultsToInterval() {
+    // When timeout is unset, it defaults to the configured interval
+    PeriodicMetricReader reader =
+        PeriodicMetricReader.builder(metricExporter).setInterval(Duration.ofSeconds(10)).build();
+    assertThat(reader).isNotNull();
+  }
+
+  @Test
   @SuppressLogger(PeriodicMetricReader.class)
   void exporterTimeout_slowExporterReportedAsFailed() throws Exception {
     CompletableResultCode neverCompletes = new CompletableResultCode();

@@ -251,6 +251,7 @@ public final class PeriodicMetricReader implements MetricReader {
         return;
       }
       if (signal.poison) {
+        tickPending.set(false);
         return;
       }
       try {
@@ -263,9 +264,7 @@ public final class PeriodicMetricReader implements MetricReader {
           }
         }
       } finally {
-        if (signal.isTick) {
-          tickPending.set(false);
-        }
+        tickPending.set(false);
       }
     }
   }
@@ -334,21 +333,15 @@ public final class PeriodicMetricReader implements MetricReader {
    * final flush on shutdown), and poison pill (from shutdown to terminate the worker).
    */
   private static final class Signal {
-    static final Signal TICK = new Signal(null, /* poison= */ false, /* isTick= */ true);
-    static final Signal POISON = new Signal(null, /* poison= */ true, /* isTick= */ false);
+    static final Signal TICK = new Signal(null, /* poison= */ false);
+    static final Signal POISON = new Signal(null, /* poison= */ true);
 
     @Nullable final CompletableResultCode flushResult;
     final boolean poison;
-    final boolean isTick;
 
-    private Signal(@Nullable CompletableResultCode flushResult, boolean poison, boolean isTick) {
+    private Signal(@Nullable CompletableResultCode flushResult, boolean poison) {
       this.flushResult = flushResult;
       this.poison = poison;
-      this.isTick = isTick;
-    }
-
-    Signal(@Nullable CompletableResultCode flushResult, boolean poison) {
-      this(flushResult, poison, /* isTick= */ false);
     }
   }
 }
